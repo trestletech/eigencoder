@@ -1,0 +1,177 @@
+---
+title: "GitHub Facial Recognition"
+author: "Jeff Allen"
+date: "March 8, 2016"
+output: html_document
+---
+
+## Data Gathering
+
+We'll collect the data from some popular programming languages from GitHub. We'll get their "trending" repositories in each of these languages recently.
+
+```{r gathering, cache=TRUE, message=FALSE}
+library(rvest)
+
+languages <- c("ruby", "r", "javascript", "java", "html", "go", "cpp", "c", "python", "php", "perl", "swift", "csharp")
+
+source("betaface.R")
+
+#TODO: lookup name from GitHub to help detect gender
+
+get_profiles <- function(lang){
+  ht <- read_html(paste0("https://github.com/trending/", lang, "?since=monthly"))
+  contribs <- ht %>% 
+    html_nodes(".repo-list-item .repo-list-meta .avatar")
+  
+  authors <- contribs %>% html_attr("alt")  
+  authors <- gsub("^@", "", authors)
+  imgs <- contribs %>% html_attr("src")
+  imgs <- gsub("s=40", "s=420", imgs)
+  
+  names(imgs) <- authors
+  imgs
+}
+
+results <- lapply(languages, function(lang){
+  message("Processing ", lang, "...")
+  prof <- get_profiles(lang)
+  df <- data.frame(
+    username=character(0), 
+    smile=numeric(0),
+    gender=character(0),
+    age=numeric(0),
+    mustache=numeric(0),
+    beard=numeric(0),
+    sideburns=numeric(0)
+  )
+  for (i in 1:length(prof)){
+    tryCatch({
+      attrs <- msface(prof[[i]], ms_key)
+      df <- rbind(df, data.frame(
+                  username=names(prof)[i],
+                  smile=attrs$smile,
+                  gender=attrs$gender,
+                  age=attrs$age,
+                  mustache=attrs$facialHair$moustache,
+                  beard=attrs$facialHair$beard,
+                  sideburns=attrs$facialHair$sideburns
+              ))
+    }, error = function(e){
+      df <- rbind(df, data.frame(
+                  username=names(prof)[i],
+                  smile=NA,
+                  gender=NA,
+                  age=NA,
+                  mustache=NA,
+                  beard=NA,
+                  sideburns=NA))
+    })
+  }
+  df
+})
+saveRDS(results, "results.Rds")
+```
+
+At this point, we have the data collected and can start analyzing.
+
+## Gender
+
+```{r gender}
+gender <- (sapply(results, function(x){list(male=sum(x["gender"] == "male"), female=sum(x["gender"] == "female"))}))
+# Weird list format
+gender <- matrix(unlist(gender), nrow=2)
+rownames(gender) <- c("Male", "Female")
+colnames(gender) <- languages
+
+counts <- apply(gender, 2, sum)
+
+genderRatio <- gender/rep(counts, each=2)
+barplot(genderRatio, main="Gender Representation by Language", las=2)
+text((1:length(languages))*1.2-.5, .5, labels=paste0(round(genderRatio[2,]*100), "%"), col="white")
+
+```
+
+## Age
+
+```{r age}
+library(RColorBrewer)
+
+pal <- brewer.pal(length(languages), "Set2")
+ages <- lapply(results, "[[", "age")
+plot(0,0,type="n",xlim=c(10,60), ylim=c(0,.1))
+for(i in 1:length(ages)){
+  lines(density(ages[[i]]), col=pal[i])
+  rug(median(ages[[i]]), lwd = 2, col=pal[i])
+}
+legend(50, .1, languages, fill=pal, bty="n")
+
+
+median <- sapply(ages, median)
+names(median) <- languages
+barplot(median, ylab="Age", main="Median Age by Language", las=2)
+text((1:length(languages))*1.2-.5, 20, labels=median)
+```
+
+## Smiles
+
+```{r smiles}
+smiles <- lapply(results, "[[", "smile")
+plot(0,0,type="n",xlim=c(-.5,1.5), ylim=c(0,2))
+for(i in 1:length(smiles)){
+  lines(density(smiles[[i]]), col=pal[i])
+}
+legend("topleft", languages, fill=pal, bty="n")
+
+
+mean <- sapply(smiles, mean)
+names(mean) <- languages
+barplot(mean, ylab="Age", main="Mean Happiness by Language", las=2)
+text((1:length(languages))*1.2-.5, .5, labels=round(mean, digits=2))
+```
+
+## Facial Hair
+
+```{r hair}
+mustache <- lapply(results, "[[", "mustache")
+beard <- lapply(results, "[[", "beard")
+sideburns <- lapply(results, "[[", "sideburns")
+
+# Mustache
+plot(0,0,type="n",xlim=c(-.25,1.1), ylim=c(0,4.5))
+for(i in 1:length(mustache)){
+  lines(density(mustache[[i]]), col=pal[i])
+}
+legend("topleft", languages, fill=pal, bty="n")
+
+# Beard
+plot(0,0,type="n",xlim=c(-.25,1.1), ylim=c(0,2.5))
+for(i in 1:length(beard)){
+  lines(density(beard[[i]]), col=pal[i])
+}
+legend("topleft", languages, fill=pal, bty="n")
+
+# Sideburns
+plot(0,0,type="n",xlim=c(-.25,1.1), ylim=c(0,3.5))
+for(i in 1:length(sideburns)){
+  lines(density(sideburns[[i]]), col=pal[i])
+}
+legend("topleft", languages, fill=pal, bty="n")
+
+# Facial Hair
+facialHair <- list()
+for (i in 1:length(mustache)){
+  facialHair[[i]] <- mustache[[i]] + beard[[i]] + sideburns[[i]]
+}
+names(facialHair) <- languages
+
+plot(0,0,type="n",xlim=c(-.25,3), ylim=c(0,1.3))
+for(i in 1:length(facialHair)){
+  lines(density(facialHair[[i]]), col=pal[i])
+}
+legend("topleft", languages, fill=pal, bty="n")
+
+mean <- sapply(facialHair, mean)
+names(mean) <- languages
+barplot(mean, ylab="Age", main="Mean Facial Hariness by Language", las=2)
+text((1:length(languages))*1.2-.5, .4, labels=round(mean, digits=2))
+```

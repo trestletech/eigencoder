@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+analysis_cache
+analysis_files
+analysis.html
+ms_key.txt
