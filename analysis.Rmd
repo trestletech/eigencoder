@@ -21,6 +21,10 @@ Combined, we can get an estimate of some interesting properties about the profil
 
 <div class="alert alert-warning">It should be noted that this is super non-scientific. Who knows how accurate the Face API is or how accurately a user's GitHub profile picture maps to any aspect of their personality/identity. It's also unclear whether the most prolific contributors to popular repositories accurately represent a community. Also, small sample sizes. Etc., etc.</div>
 
+All code used in this post is available here: [https://github.com/trestletech/eigencoder](https://github.com/trestletech/eigencoder)
+
+## Data
+
 ```{r gathering, cache=TRUE,message=FALSE, warning=FALSE, echo=FALSE}
 library(rvest)
 
@@ -100,6 +104,20 @@ results <- lapply(results, function(x){
 saveRDS(results, "unique-results.Rds")
 ```
 
+GitHub lists 25 repositories on its trending page and shows the top 5 committers for each. Some projects don't have 5 contributors, so fewer are shown. We remove duplicated usernames then send each of these profile pictures (up to 125 per language) to be analyzed by the Face API. Of course, not all pictures have (detectable) faces in them.
+
+In total, we get the following:
+
+```{r, echo=FALSE, results='asis'}
+df <- data.frame(Lang=languages, FacesDetected=numeric(length(languages)))
+for (i in 1:length(languages)){
+  df[i,2] <- nrow(results[[i]])
+}
+
+knitr::kable(df)
+```
+
+
 ## Gender
 
 One of the properties returned by the Face API is a prediction of the gender of the subject of the photo. The results are pretty discouraging for anyone who's not a chauvinist...
@@ -145,15 +163,24 @@ listToDF <- function(lst, name="val"){
 }
 
 listToDensity <- function(lst, title="", xlab="x", ...){
-  dens <- lapply(lst, density)
+  dens <- lapply(lst, function(li){
+    breaks <- seq(from=min(li), to=max(li), length.out=6)
+    cu <- cut(li, breaks, right=FALSE, labels=breaks[-1])
+    
+    # Prepend 0
+    ar <- c(0, table(cu))
+    names(ar)[1] <- "0"
+    
+    ar
+  })
   df <- data.frame(
-    x = unlist(lapply(dens, "[[", "x")),
-    y = unlist(lapply(dens, "[[", "y")),
-    lang = rep(names(dens), each = length(dens[[1]]$x))
+    x = unlist(lapply(dens, function(x){as.numeric(names(x))})),
+    y = unlist(lapply(dens, as.numeric)),
+    lang = rep(names(dens), each = length(dens[[1]]))
   )
   
   plot_ly(df, x=x, y=y, color=lang) %>% 
-    layout(title=title, xaxis=list(title=xlab), yaxis=list(title="Ratio"), ...)
+    layout(title=title, xaxis=list(title=xlab), yaxis=list(title="Ratio"), autosize=FALSE, ...)
 }
 
 listToBar <- function(lst, fun, title="", ylab="Average"){
@@ -164,7 +191,7 @@ listToBar <- function(lst, fun, title="", ylab="Average"){
   df <- df %>% arrange(desc(avg))
   
   plot_ly(df, x=language, y=avg, type="bar") %>% 
-    layout(title=title, yaxis=list(title=ylab))
+    layout(title=title, yaxis=list(title=ylab), autosize=TRUE)
 }
 
 ages <- lapply(results, "[[", "age")
