@@ -33,7 +33,35 @@ betaface <- function(img, key="d45fd466-51e2-4701-8da8-04351c872236",
   do.call(rbind.data.frame, face$tags)
 }
 
+library(digest)
+cached_msface <- function(img, key, cache="./cache"){
+  if (!dir.exists(cache)){
+    dir.create(cache)
+  }
+  
+  # Lookup img hash in cache
+  hash <- digest::sha1(img)  
+  
+  if (file.exists(file.path(cache, hash))){
+    obj <- readRDS(file.path(cache, hash))
+    message("Cache hit: ", img)
+    if (is.null(obj)){
+      stop("Original error")
+    }
+    return(obj)
+  }
+  
+  message("Not in cache: ", img, " ", hash)
+  tryCatch({
+    f <- msface(img, key)
+    saveRDS(f, file.path(cache, hash))
+    return(f)
+  }, error=function(e){
+    saveRDS(NULL, file.path(cache, hash))
+  })
+}
 
+# Microsoft Faces API key
 ms_key <- readLines("ms_key.txt")
 msface <- function(img, key){
   url <- "https://api.projectoxford.ai/face/v1.0/detect?returnFaceId=0&returnFaceLandmarks=0&returnFaceAttributes=age,gender,facialHair,smile"  
