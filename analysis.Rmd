@@ -123,25 +123,21 @@ knitr::kable(df)
 One of the properties returned by the Face API is a prediction of the gender of the subject of the photo. The results are pretty discouraging for anyone who's not a chauvinist...
 
 ```{r gender, warning=FALSE, echo=FALSE, message=FALSE}
-gender <- (sapply(results, function(x){list(male=sum(x["gender"] == "male"), female=sum(x["gender"] == "female"))}))
-# Weird list format
-gender <- matrix(unlist(gender), nrow=2)
-rownames(gender) <- c("Male", "Female")
-colnames(gender) <- languages
-
-counts <- apply(gender, 2, sum)
-
 library(dplyr)
-library(tidyr)
-genderRatio <- as.data.frame(t(gender/rep(counts, each=2)))
-genderRatio$language <- rownames(genderRatio)
-genderRatio <- gather(genderRatio, gender, ratio, Male, Female)
 
-#Sort
-genderRatio <- genderRatio %>% arrange(desc(gender),desc(ratio))
+gender <- lapply(names(results), function(nm) {
+  results[[nm]] %>%
+    count(gender) %>% 
+    mutate(prop = prop.table(n)) %>% 
+    mutate(language = nm) %>% 
+    rename(ratio = prop) %>% 
+    select(language, gender, n, ratio)
+})
+gender <- bind_rows(gender) %>% 
+  arrange(desc(gender), desc(ratio))
 
 library(plotly)
-plot_ly(genderRatio, x=language, y=ratio, type="bar", color=gender) %>% 
+plot_ly(gender, x=language, y=ratio, type="bar", color=gender) %>% 
   layout(barmode="stack")
 ```
 
